@@ -1,0 +1,10 @@
+psutil
+pynput
+Pillow
+scapy
+pyshark
+requests
+mitmproxy
+pyxdg
+pyautogui
+python-xlib
