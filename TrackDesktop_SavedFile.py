@@ -9,13 +9,12 @@ import subprocess
 from pynput import keyboard, mouse
 from threading import Thread
 from datetime import datetime
-import requests
 
 
 LOG_FILE = "user_activity_detailed.log"
 LOG_SYSTEM="system_usage_detailed.log"
 SCREENSHOT_FOLDER = "screenshots"
-INACTIVITY_THRESHOLD = 1800
+INACTIVITY_THRESHOLD = 20
 SCREENSHOT_INTERVAL = 600
 AUTOMATION_THRESHOLD = 0.02
 
@@ -27,27 +26,9 @@ last_screenshot_time = time.time()
 last_mouse_position = (0, 0)
 active_app = None
 app_start_time = time.time()
+
 os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
 
-ODOO_URL = "http://localhost:8069"
-ODOO_API_ENDPOINT_USER = f"{ODOO_URL}/api/user-activity"
-ODOO_API_ENDPOINT_SYSTEM = f"{ODOO_URL}/api/system-usage"
-# ODOO_API_KEY = "your_api_key"
-# HEADERS = {"Authorization": f"Bearer {ODOO_API_KEY}", "Content-Type": "application/json"}
-ODOO_HEADERS = {
-    "Content-Type": "application/json",
-
-}
-
-def send_log_to_odoo(endpoint, data):
-    try:
-        response = requests.post(endpoint, json=data, headers=ODOO_HEADERS)
-        if response.status_code == 200:
-            print(f"✅ Successfully sent log to {endpoint}")
-        else:
-            print(f"❌ Failed to send log to {endpoint}: {response.text}")
-    except Exception as e:
-        print(f"❌ Error sending log to Odoo: {e}")
 def log_system_usage():
     while True:
         try:
@@ -65,14 +46,14 @@ def log_system_usage():
                 "network_sent": f"{net.bytes_sent / 1024 ** 2:.2f} MB",
                 "network_received": f"{net.bytes_recv / 1024 ** 2:.2f} MB"
             }
-            send_log_to_odoo(ODOO_API_ENDPOINT_SYSTEM, log_data)
+
             with open(LOG_SYSTEM, "a") as log_file:
                 log_file.write(json.dumps(log_data, indent=4) + "\n")
 
         except Exception as e:
             print(f"Error logging system usage: {e}")
 
-        time.sleep(60)
+        time.sleep(10)
 
 def get_active_window():
     try:
@@ -110,19 +91,19 @@ def log_user_activity():
 
             log_data = {
                 "timestamp": datetime.now().isoformat(),
-                "mouse_clicks": mouse_activity["clicks"],
-                "scrolls": mouse_activity["scrolls"],
-                "movements": mouse_activity["movements"],
-                "key_presses": keyboard_activity["key_presses"],
-                "keys": keyboard_activity["keys"],
+                "mouse_activity": mouse_activity,
+                "keyboard_activity": {
+                    "total_key_presses": keyboard_activity["key_presses"],
+                    "keys": keyboard_activity["keys"][-10:]  # Last 10 keys pressed
+                },
                 "system_uptime": f"{uptime:.2f} seconds",
                 "application_usage": {app: f"{time_spent:.2f} seconds" for app, time_spent in app_usage.items()}
             }
-            send_log_to_odoo(ODOO_API_ENDPOINT_USER, log_data)
+
             with open(LOG_FILE, "a") as log_file:
                 log_file.write(json.dumps(log_data, indent=4) + "\n")
 
-
+            # Reset counts
             mouse_activity = {"clicks": 0, "scrolls": 0, "movements": 0}
             keyboard_activity = {"key_presses": 0, "keys": []}
 
