@@ -32,16 +32,32 @@ os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
 ODOO_URL = "http://localhost:8069"
 ODOO_API_ENDPOINT_USER = f"{ODOO_URL}/api/user-activity"
 ODOO_API_ENDPOINT_SYSTEM = f"{ODOO_URL}/api/system-usage"
-# ODOO_API_KEY = "your_api_key"
-# HEADERS = {"Authorization": f"Bearer {ODOO_API_KEY}", "Content-Type": "application/json"}
+
+
+TOKEN_FILE = os.path.expanduser("~/PycharmProjects/ScriptDev/checkin_token.txt")
+try:
+    with open(TOKEN_FILE, "r") as f:
+        AUTH_TOKEN = f.read().strip()
+    if not AUTH_TOKEN:
+        raise ValueError("Token file is empty")
+except Exception as e:
+    print(f"❌ CRITICAL ERROR: Failed to load token - {str(e)}")
+    exit(1)
+
 ODOO_HEADERS = {
     "Content-Type": "application/json",
-
+    "Authorization": f"Bearer {AUTH_TOKEN}"
 }
+
 
 def send_log_to_odoo(endpoint, data):
     try:
         response = requests.post(endpoint, json=data, headers=ODOO_HEADERS)
+        if response.status_code == 401:  # Unauthorized
+            print("⚠️ Authentication failed - attempting token refresh")
+
+            response = requests.post(endpoint, json=data, headers=ODOO_HEADERS)
+
         if response.status_code == 200:
             print(f"✅ Successfully sent log to {endpoint}")
         else:
@@ -57,7 +73,7 @@ def log_system_usage():
             net = psutil.net_io_counters()
 
             log_data = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "cpu_usage": cpu_percent,
                 "memory_used": f"{memory.used / 1024 ** 3:.2f} GB",
                 "memory_percent": memory.percent,
@@ -121,8 +137,6 @@ def log_user_activity():
             send_log_to_odoo(ODOO_API_ENDPOINT_USER, log_data)
             with open(LOG_FILE, "a") as log_file:
                 log_file.write(json.dumps(log_data, indent=4) + "\n")
-
-
             mouse_activity = {"clicks": 0, "scrolls": 0, "movements": 0}
             keyboard_activity = {"key_presses": 0, "keys": []}
 
