@@ -1,0 +1,45 @@
+Metadata-Version: 2.1
+Name: PyGObject-stubs
+Version: 2.1.0
+Summary: Typing stubs for PyGObject
+Author: Christoph Reiter
+Author-email: reiter.christoph@gmail.com
+License: LGPL-2.1
+Project-URL: homepage, https://github.com/pygobject/pygobject-stubs
+Project-URL: repository, https://github.com/pygobject/pygobject-stubs
+Classifier: Programming Language :: Python :: 3
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: mypy ; extra == 'dev'
+Requires-Dist: black ; extra == 'dev'
+Requires-Dist: PyGObject ; extra == 'dev'
+
+# Typing Stubs for PyGObject
+
+[![image](https://travis-ci.org/pygobject/pygobject-stubs.svg?branch=master)](https://travis-ci.org/pygobject/pygobject-stubs)
+[![PyPI](https://img.shields.io/pypi/v/pygobject-stubs)](https://pypi.org/project/PyGObject-stubs)
+
+## Installation
+```
+pip install PyGObject-stubs
+```
+
+### Installation of Multi Version stubs
+
+Some libraries exist in multiple versions like Gtk3/4. As both libraries are
+currently imported under the namespace `Gtk` only stubs for one can be installed.
+
+You need to decide this at install time with setting the ENV var
+`PYGOBJECT_STUB_CONFIG`.
+
+Example:
+`PYGOBJECT_STUB_CONFIG=Gtk4,Soup3 pip install .`
+
+## Contributing
+
+[Guide](./CONTRIBUTING.md)
