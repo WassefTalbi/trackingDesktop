@@ -9,13 +9,8 @@ from pynput import keyboard, mouse
 from threading import Thread
 from datetime import datetime
 import requests
-import lz4.block
 import re
-from collections import deque
-from evdev import InputDevice, ecodes, list_devices
-import asyncio
 
-# === Configuration ===
 ODOO_URL = "http://localhost:8069"
 ODOO_API_ENDPOINT_USER = f"{ODOO_URL}/api/user-activity"
 ODOO_API_ENDPOINT_SYSTEM = f"{ODOO_URL}/api/system-usage"
@@ -42,8 +37,6 @@ keyboard_activity = {"key_presses": 0, "keys": []}
 app_usage = {}
 active_app = None
 app_start_time = time.time()
-recent_mouse_events = deque(maxlen=50)
-recent_keyboard_events = deque(maxlen=30)
 
 def send_log_to_odoo(endpoint, data):
     try:
@@ -57,58 +50,23 @@ def send_log_to_odoo(endpoint, data):
     except Exception as e:
         print(f"\u274c Error sending log to Odoo: {e}")
 
-def is_virtual_device(device):
-    name = device.name.lower()
-    return any(k in name for k in ['uinput', 'virtual', 'pynput', 'xvfb', 'xdotool'])
-
-async def monitor_device(device, virtual_devices):
-    try:
-        async for event in device.async_read_loop():
-            if device.path in virtual_devices:
-                alert_data = {
-                    "timestamp": datetime.now().isoformat(),
-                    "alert_type": "anomalous_input",
-                    "device": device.name,
-                    "event": f"type={event.type}, code={event.code}, value={event.value}",
-                    "message": f"\u26a0\ufe0f Suspicious input detected from {device.name}"
-                }
-                print(f"[ALERT] {alert_data['message']}")
-                #send_log_to_odoo(ODOO_API_ALERT, alert_data)
-    except Exception as e:
-        print(f"[ERROR] Error monitoring {device.path}: {e}")
-
-async def monitor_all_devices():
-    devices = [InputDevice(path) for path in list_devices()]
-    virtual_devices = {d.path for d in devices if is_virtual_device(d)}
-    print(f"Devices virtuels détectés: {len(virtual_devices)}")
-    for d in devices:
-        print(f" - {d.path} : {d.name} {'(VIRTUAL)' if d.path in virtual_devices else '(PHYSICAL)'}")
-    tasks = [asyncio.create_task(monitor_device(d, virtual_devices)) for d in devices]
-    await asyncio.gather(*tasks)
-
-def run_evdev_monitor():
-    asyncio.run(monitor_all_devices())
-
 def on_key_press(key):
     try:
         keyboard_activity["key_presses"] += 1
         keyboard_activity["keys"].append(str(key))
-        recent_keyboard_events.append((str(key), time.time()))
+
     except Exception as e:
         print(f"[ERROR] key press: {e}")
 
 def on_mouse_click(x, y, button, pressed):
     if pressed:
         mouse_activity["clicks"] += 1
-        recent_mouse_events.append(("click", time.time()))
 
 def on_mouse_scroll(x, y, dx, dy):
     mouse_activity["scrolls"] += 1
-    recent_mouse_events.append(("scroll", time.time()))
 
 def on_mouse_move(x, y):
     mouse_activity["movements"] += 1
-    recent_mouse_events.append(("move", time.time()))
 
 def log_user_activity():
     global mouse_activity, keyboard_activity
@@ -205,7 +163,7 @@ if __name__ == "__main__":
         Thread(target=log_system_usage, daemon=True).start()
         Thread(target=log_user_activity, daemon=True).start()
         Thread(target=track_active_window, daemon=True).start()
-        Thread(target=run_evdev_monitor, daemon=True).start()
+
 
         with keyboard.Listener(on_press=on_key_press) as k_listener, \
              mouse.Listener(on_click=on_mouse_click, on_scroll=on_mouse_scroll, on_move=on_mouse_move) as m_listener:

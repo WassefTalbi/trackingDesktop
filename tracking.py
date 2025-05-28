@@ -93,9 +93,9 @@ def get_firefox_tabs():
 
 def get_active_window_title():
     try:
-        # Use wmctrl to get the window title of the currently focused window
+
         title = subprocess.check_output(['wmctrl', '-lpG']).decode('utf-8')
-        print(title)
+        print("title is ",title)
         for line in title.splitlines():
             if '* ' in line:
                 return line.split(None, 4)[-1]

@@ -102,14 +102,12 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
         start_time = time.time()
         now = time.time()
 
-        # Clean old events
         for key in ['mouse', 'keyboard', 'scripted_keyboard']:
             while event_buffer[key] and now - event_buffer[key][0][0] > event_window:
                 event_buffer[key].popleft()
 
         current_mouse_pos = get_mouse_position()
 
-        # Detect mouse movement
         if current_mouse_pos != last_mouse_pos:
             if event_buffer['mouse']:
                 if should_print('mouse_move'):
@@ -118,8 +116,6 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
                 if should_print('cursor_scripted_move'):
                     print(f"⚠️ Cursor moved from {last_mouse_pos} to {current_mouse_pos} (scripted)")
             last_mouse_pos = current_mouse_pos
-
-        # Detect mouse clicks and scrolls, print once per cooldown
         for _, event in list(event_buffer['mouse']):
             if event.type == ecodes.EV_KEY and event.code in [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE]:
                 if event.value == 1 and should_print('mouse_click'):
@@ -128,18 +124,12 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
                 if should_print('mouse_scroll'):
                     print("✅ Mouse scroll detected (real)")
 
-        # Check for scripted cursor move without hardware event
         if not event_buffer['mouse']:
             pos_now = get_mouse_position()
             if pos_now != last_mouse_pos and should_print('cursor_scripted_move'):
                 print("⚠️ Cursor movement or activity detected without hardware event (scripted)")
-
-        # Keyboard detection: compare real evdev vs scripted X11 events
         real_kbd = len(event_buffer['keyboard']) > 0
         scripted_kbd = len(event_buffer['scripted_keyboard']) > 0
-
-
-
         if real_kbd:
             if should_print('keyboard_real'):
                 print("✅ Keyboard input detected (real)")
