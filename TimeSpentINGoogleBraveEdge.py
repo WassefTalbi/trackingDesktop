@@ -12,7 +12,6 @@ CHROMIUM_PATHS = {
     "edge": os.path.expanduser("~/.config/microsoft-edge/Default/History")
 }
 
-# Cache of recent history entries: {title: url}
 history_cache = {}
 last_history_update = datetime.min
 HISTORY_UPDATE_INTERVAL = 10  # seconds
@@ -63,11 +62,11 @@ def update_history_cache():
     history_cache = new_cache
 
 def find_url_by_title(title):
-    # Exact match first
+
     if title in history_cache:
         return history_cache[title]
 
-    # Try partial match
+
     for cached_title in history_cache:
         if cached_title in title or title in cached_title:
             return history_cache[cached_title]
@@ -76,7 +75,7 @@ def find_url_by_title(title):
 def main(poll_interval=1):
     global last_history_update
 
-    time_spent = defaultdict(float)  # key: (url, title) → total seconds
+    time_spent = defaultdict(float)
     current_key = None
     start_time = None
 
@@ -85,21 +84,16 @@ def main(poll_interval=1):
     try:
         while True:
             now = time.time()
-
-            # Refresh history cache periodically
             if (datetime.now() - last_history_update).total_seconds() > HISTORY_UPDATE_INTERVAL:
                 update_history_cache()
                 last_history_update = datetime.now()
-
             active_title = get_active_window_title()
             if active_title:
                 url = find_url_by_title(active_title)
                 key = (url, active_title) if url else None
             else:
                 key = None
-
             if key != current_key:
-                # Focus changed, store previous duration
                 if current_key and start_time:
                     duration = now - start_time
                     time_spent[current_key] += duration

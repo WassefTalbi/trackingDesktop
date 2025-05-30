@@ -10,7 +10,7 @@ from collections import defaultdict
 FIREFOX_PROFILE_PATH = "/home/wassef/snap/firefox/common/.mozilla/firefox/3afnh5rk.default"
 RECOVERY_FILE = os.path.join(FIREFOX_PROFILE_PATH, "sessionstore-backups", "recovery.jsonlz4")
 IGNORED_PROCESSES = {"Xwayland", "Xorg", "gnome-shell", "gnome-shell-calendar-server", "pipewire"}
-
+IGNORED_DISPLAY_APPS = {"Isolated Web Co", "Unknown"}
 # === UTILITIES ===
 def is_gui_process(proc):
     try:
@@ -139,7 +139,9 @@ def main():
 
     print("\n📊 Application usage report:")
     for app, seconds in sorted(app_results.items(), key=lambda x: -x[1]):
-        print(f" - {app}: {seconds:.2f} seconds")
+        if app not in IGNORED_DISPLAY_APPS:
+            print(f" - {app}: {seconds:.2f} seconds")
+
 
     print("\n🌐 Website usage report (Firefox):")
     for site, seconds in sorted(site_results.items(), key=lambda x: -x[1]):
