@@ -5,7 +5,6 @@ import subprocess
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# Path to Chromium-based browsers history DBs
 CHROMIUM_PATHS = {
     "chrome": os.path.expanduser("~/.config/google-chrome/Default/History"),
     "brave": os.path.expanduser("~/.config/BraveSoftware/Brave-Browser/Default/History"),
@@ -14,7 +13,7 @@ CHROMIUM_PATHS = {
 
 history_cache = {}
 last_history_update = datetime.min
-HISTORY_UPDATE_INTERVAL = 10  # seconds
+HISTORY_UPDATE_INTERVAL = 10
 
 def get_active_window_title():
     try:
@@ -79,8 +78,6 @@ def main(poll_interval=1):
     current_key = None
     start_time = None
 
-    print("🔍 Tracking active browser tab... (Ctrl+C to stop)")
-
     try:
         while True:
             now = time.time()
@@ -103,7 +100,7 @@ def main(poll_interval=1):
             time.sleep(poll_interval)
 
     except KeyboardInterrupt:
-        # Save time on current tab
+
         if current_key and start_time:
             duration = time.time() - start_time
             time_spent[current_key] += duration
