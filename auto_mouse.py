@@ -42,15 +42,15 @@ def simulate_activity():
         time.sleep(0.5)
 
         # Keyboard input
-        keyboard.type("Hello from simulation script!")
-        print("⌨️ Typed text")
-        time.sleep(0.5)
+        #keyboard.type("Hello from simulation script!")
+        #print("⌨️ Typed text")
+        #time.sleep(0.5)
 
-        # Press Enter key
-        keyboard.press(Key.enter)
-        keyboard.release(Key.enter)
-        print("⌨️ Pressed Enter")
-        time.sleep(0.5)
+        # # Press Enter key
+        # keyboard.press(Key.enter)
+        # keyboard.release(Key.enter)
+        # print("⌨️ Pressed Enter")
+        # time.sleep(0.5)
 
         # Double click
         mouse.click(Button.left, 2)
