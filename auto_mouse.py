@@ -36,10 +36,10 @@ def simulate_activity():
         print("🖱️ Scrolled down")
         time.sleep(0.5)
 
-        # Mouse click
-        #mouse.click(Button.left, 1)
-        #print("🖱️ Left clicked")
-        #time.sleep(0.5)
+        #Mouse click
+        mouse.click(Button.left, 1)
+        print("🖱️ Left clicked")
+        time.sleep(0.5)
 
         # Keyboard input
         keyboard.type("Hello from simulation script!")
