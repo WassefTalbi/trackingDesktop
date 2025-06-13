@@ -33,6 +33,33 @@ HISTORY_UPDATE_INTERVAL = 10  # seconds
 history_cache = {}
 last_history_update = datetime.min
 
+
+# === ODOO SETUP ===
+if os.geteuid() == 0 and os.environ.get("SUDO_USER"):
+    user_home = os.path.expanduser(f"~{os.environ['SUDO_USER']}")
+else:
+    user_home = os.path.expanduser("~")
+
+TOKEN_FILE = os.path.join(user_home, "PycharmProjects/ScriptDev/checkin_token.txt")
+ODOO_URL = "http://localhost:8069"
+
+try:
+    with open(TOKEN_FILE, "r") as f:
+        AUTH_TOKEN = f.read().strip()
+    if not AUTH_TOKEN:
+        raise ValueError("Token file is empty")
+except Exception as e:
+    print(f"❌ CRITICAL ERROR: Failed to load token - {e}")
+    exit(1)
+
+ODOO_HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {AUTH_TOKEN}"
+}
+
+script_flag = {'used': False}
+alert_sent = False
+
 # === UTILITIES ===
 
 def is_gui_process(proc):
@@ -250,6 +277,8 @@ def track_forever(interval=1):
             app_usage[active_app] += delta
             if active_site: site_usage[active_site] += delta
 
+        send_daily_report(app_usage, site_usage)
+
         print("\n\n📊 Application usage report:")
         for app, secs in sorted(app_usage.items(), key=lambda x: -x[1]):
             print(f" - {app}: {secs:.2f} seconds")
@@ -309,6 +338,39 @@ def monitor_scroll_devices():
                     scroll_events.append((time.time(), d.name, e.code, e.value))
         threading.Thread(target=handler, args=(dev,), daemon=True).start()
 
+def send_log_to_odoo(endpoint, data):
+    try:
+        resp = requests.post(endpoint, json=data, headers=ODOO_HEADERS, timeout=5)
+        if resp.status_code == 401:
+            print("🔒 Authentication failed - token invalid")
+        elif resp.status_code in (200, 201):
+            print(f"✅ Log sent to {endpoint}")
+        else:
+            print(f"❌ Failed to send log: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"❌ Error sending log: {e}")
+
+def send_script_alert():
+    global alert_sent
+    if alert_sent:
+        return
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "details": "Scripted input detected (keyboard, click, or cursor)."
+    }
+    send_log_to_odoo(f"{ODOO_URL}/api/script_alert", payload)
+    alert_sent = True
+    print("🚨 Administration notified about scripted input.")
+
+def send_daily_report(app_usage, site_usage):
+    payload = {
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "app_usage": {k: round(v, 2) for k, v in app_usage.items()},
+        "site_usage": {k: round(v, 2) for k, v in site_usage.items()},
+        "script_used": script_flag['used']
+    }
+    send_log_to_odoo(f"{ODOO_URL}/api/employee_daily_work", payload)
+
 
 def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
     print("🔍 Input Detection Tracker is running...")
@@ -332,33 +394,68 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
 
     try:
         while True:
-            s=time.time(); now=s
-            pos=get_mouse_position()
-            if pos!=last_pos:
-                if buffer['mouse'] and should_print('cursor_real'): print(f"✅ Cursor moved from {last_pos} to {pos} (real)"); buffer['scripted_motion'].clear()
-                elif not buffer['mouse'] and should_print('cursor_scripted'): print(f"⚠️ Cursor moved from {last_pos} to {pos} (scripted)"); buffer['mouse'].clear()
-                last_pos=pos
-            for _,e in list(buffer['mouse']):
-                if e.type==ecodes.EV_KEY and e.code in [ecodes.BTN_LEFT,ecodes.BTN_RIGHT,ecodes.BTN_MIDDLE] and e.value==1:
-                    if should_print('click_real'): print("✅ Mouse click detected (real)"); buffer['scripted_mouse'].clear()
-            for _,e in list(buffer['scripted_mouse']):
-                if e.type==X.ButtonPress and should_print('click_scripted'): print(f"⚠️ Scripted mouse click detected (button {e.detail})"); buffer['mouse'].clear()
-            while scroll_events and now-scroll_events[0][0]<=event_window:
-                t,name,code,val=scroll_events.popleft()
-                if should_print('scroll_real'): dirc='↑' if val>0 else '↓'; print(f"🖱️ Scroll on {name}: {dirc} (passive device)"); buffer['scripted_mouse'].clear()
-            # Keyboard detection with precedence
+            s = time.time()
+            now = s
+            pos = get_mouse_position()
+
+            # Cursor movement
+            if pos != last_pos:
+                if buffer['mouse'] and should_print('cursor_real'):
+                    print(f"✅ Cursor moved from {last_pos} to {pos} (real)")
+                    buffer['scripted_motion'].clear()
+                elif not buffer['mouse'] and should_print('cursor_scripted'):
+                    print(f"⚠️ Cursor moved from {last_pos} to {pos} (scripted)")
+                    script_flag['used'] = True
+                    send_script_alert()
+                    buffer['mouse'].clear()
+                last_pos = pos
+
+            # Real mouse click
+            for _, e in list(buffer['mouse']):
+                if e.type == ecodes.EV_KEY and e.code in [ecodes.BTN_LEFT, ecodes.BTN_RIGHT,
+                                                          ecodes.BTN_MIDDLE] and e.value == 1:
+                    if should_print('click_real'):
+                        print("✅ Mouse click detected (real)")
+                        buffer['scripted_mouse'].clear()
+
+            # Scripted mouse click
+            for _, e in list(buffer['scripted_mouse']):
+                if e.type == X.ButtonPress and should_print('click_scripted'):
+                    print(f"⚠️ Scripted mouse click detected (button {e.detail})")
+                    script_flag['used'] = True
+                    send_script_alert()
+                    buffer['mouse'].clear()
+                    buffer['scripted_mouse'].clear()
+
+            # Real scroll detection
+            while scroll_events and now - scroll_events[0][0] <= event_window:
+                _, name, code, val = scroll_events.popleft()
+                if should_print('scroll_real'):
+                    direction = '↑' if val > 0 else '↓'
+                    print(f"🖱️ Scroll on {name}: {direction} (real)")
+                    buffer['scripted_mouse'].clear()
+
+            # Keyboard detection
             if buffer['keyboard']:
-                if should_print('keyboard_real'): print("✅ Keyboard input detected (real)")
+                if should_print('keyboard_real'):
+                    print("✅ Keyboard input detected (real)")
                 buffer['scripted_keyboard'].clear()
                 buffer['keyboard'].clear()
             elif buffer['scripted_keyboard']:
-                if should_print('keyboard_scripted'): print("⚠️ Scripted keyboard input detected")
+                if should_print('keyboard_scripted'):
+                    print("⚠️ Scripted keyboard input detected")
+                    script_flag['used'] = True
+                    send_script_alert()
                 buffer['scripted_keyboard'].clear()
                 buffer['keyboard'].clear()
+
             # Cleanup old events
             for buf in buffer.values():
-                while buf and now-buf[0][0]>event_window: buf.popleft()
-            time.sleep(max(0,poll_interval-(time.time()-s)))
+                while buf and now - buf[0][0] > event_window:
+                    buf.popleft()
+
+            time.sleep(max(0, poll_interval - (time.time() - s)))
+
     except KeyboardInterrupt:
         print("\n🔒 Input Detection Tracker stopped.")
 
