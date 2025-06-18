@@ -26,6 +26,8 @@ site_usage = defaultdict(float)
 active_app = None
 active_site = None
 start_time = None
+is_paused = False
+AUTH_TOKEN=None
 # === CONFIG ===
 FIREFOX_PROFILE_PATH = "/home/wassef/snap/firefox/common/.mozilla/firefox/3afnh5rk.default"
 RECOVERY_FILE = os.path.join(FIREFOX_PROFILE_PATH, "sessionstore-backups", "recovery.jsonlz4")
@@ -53,25 +55,42 @@ else:
 TOKEN_FILE = os.path.join(user_home, "PycharmProjects/ScriptDev/checkin_token.txt")
 ODOO_URL = "http://localhost:8069"
 
-try:
-    with open(TOKEN_FILE, "r") as f:
-        AUTH_TOKEN = f.read().strip()
-    if not AUTH_TOKEN:
-        raise ValueError("Token file is empty")
-except Exception as e:
-    print(f"❌ CRITICAL ERROR: Failed to load token - {e}")
-    exit(1)
+def reload_token():
+    global AUTH_TOKEN
+    try:
+        with open(TOKEN_FILE, "r") as f:
+            AUTH_TOKEN = f.read().strip()
+        if not AUTH_TOKEN:
+            raise ValueError("Token file is empty")
+        return AUTH_TOKEN
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: Failed to load token - {e}")
+        exit(1)
 
-ODOO_HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {AUTH_TOKEN}"
-}
+
+reload_token()
+
+def get_headers():
+
+    reload_token()
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {AUTH_TOKEN}"
+    }
 
 script_flag = {'used': False}
 alert_sent = False
 
 # === UTILITIES ===
+def pause_tracking():
+    global is_paused
+    is_paused = True
+    print("🛑 Tracking paused.")
 
+def resume_tracking():
+    global is_paused
+    is_paused = False
+    print("▶️ Tracking resumed.")
 def is_gui_process(proc):
     try:
         with open(f"/proc/{proc.pid}/environ", "rb") as f:
@@ -236,10 +255,13 @@ def detect_firefox_private_windows():
 
 def track_forever(interval=1):
     print("🟢 GUI + Website Tracker is running (Ctrl+C to stop)...")
-    global app_usage, site_usage, active_app, active_site, start_time,last_history_update
+    global app_usage, site_usage, active_app, active_site, start_time,last_history_update,is_paused
 
     try:
         while True:
+            if is_paused:
+                time.sleep(1)
+                continue
             now = time.time()
             if (datetime.now() - last_history_update).total_seconds() > HISTORY_UPDATE_INTERVAL:
                 update_history_cache()
@@ -345,7 +367,8 @@ def monitor_scroll_devices():
 
 def send_log_to_odoo(endpoint, data):
     try:
-        resp = requests.get(endpoint, json=data, headers=ODOO_HEADERS, timeout=5)
+        headers = get_headers()
+        resp = requests.get(endpoint, json=data, headers=headers, timeout=5)
         if resp.status_code == 401:
             print("🔒 Authentication failed - token invalid")
         elif resp.status_code in (200, 201):
@@ -477,10 +500,19 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
 
     except KeyboardInterrupt:
         print("\n🔒 Input Detection Tracker stopped.")
+@app.route("/pause", methods=["GET"])
+def pause():
+    pause_tracking()
+    return jsonify({"status": "Tracking paused"}), 200
 
+@app.route("/resume", methods=["GET"])
+def resume():
+    resume_tracking()
+    return jsonify({"status": "Tracking resumed"}), 200
 @app.route("/checkout", methods=["GET"])
 def checkout():
     print("⛔ Checkout requested")
+
     global app_usage, site_usage
 
     try:
@@ -491,9 +523,11 @@ def checkout():
             "date": datetime.now().strftime("%Y-%m-%d"),
             "app_usage": [{"name": k, "time_spent": format_duration(v)} for k, v in app_usage.items()],
             "site_usage": [{"name": k, "time_spent": format_duration(v)} for k, v in site_usage.items()],
-            "script_used": script_flag['used']
+            "script_used": script_flag['used'],
+            "AUTH_TOKEN":AUTH_TOKEN
         }
-        return jsonify({"status": "checkout in progress"})
+
+        return payload #jsonify({"status": "checkout in progress"})
 
     except Exception as e:
         print(f"❌ Failed to send daily report: {e}")
