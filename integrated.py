@@ -1,3 +1,5 @@
+
+from flask import Flask, jsonify
 import os
 import time
 import subprocess
@@ -16,6 +18,14 @@ from Xlib import display, X
 from Xlib.ext import record
 from Xlib.protocol import rq
 
+app = Flask(__name__)
+
+# === Global Usage Trackers ===
+app_usage = defaultdict(float)
+site_usage = defaultdict(float)
+active_app = None
+active_site = None
+start_time = None
 # === CONFIG ===
 FIREFOX_PROFILE_PATH = "/home/wassef/snap/firefox/common/.mozilla/firefox/3afnh5rk.default"
 RECOVERY_FILE = os.path.join(FIREFOX_PROFILE_PATH, "sessionstore-backups", "recovery.jsonlz4")
@@ -226,13 +236,8 @@ def detect_firefox_private_windows():
 
 def track_forever(interval=1):
     print("🟢 GUI + Website Tracker is running (Ctrl+C to stop)...")
-    app_usage = defaultdict(float)
-    site_usage = defaultdict(float)
-    active_app = None
-    active_site = None
-    start_time = time.time()
+    global app_usage, site_usage, active_app, active_site, start_time,last_history_update
 
-    global last_history_update
     try:
         while True:
             now = time.time()
@@ -340,7 +345,7 @@ def monitor_scroll_devices():
 
 def send_log_to_odoo(endpoint, data):
     try:
-        resp = requests.post(endpoint, json=data, headers=ODOO_HEADERS, timeout=5)
+        resp = requests.get(endpoint, json=data, headers=ODOO_HEADERS, timeout=5)
         if resp.status_code == 401:
             print("🔒 Authentication failed - token invalid")
         elif resp.status_code in (200, 201):
@@ -362,11 +367,25 @@ def send_script_alert():
     alert_sent = True
     print("🚨 Administration notified about scripted input.")
 
+def format_duration(secs):
+    total_seconds = int(secs)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    parts = []
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or hours:
+        parts.append(f"{minutes}min")
+    parts.append(f"{seconds}seconds")
+
+    return " ".join(parts)
+
 def send_daily_report(app_usage, site_usage):
     payload = {
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "app_usage": {k: round(v, 2) for k, v in app_usage.items()},
-        "site_usage": {k: round(v, 2) for k, v in site_usage.items()},
+        "app_usage": [{"name": k, "time_spent": format_duration(v)} for k, v in app_usage.items()],
+        "site_usage": [{"name": k, "time_spent": format_duration(v)} for k, v in site_usage.items()],
         "script_used": script_flag['used']
     }
     send_log_to_odoo(f"{ODOO_URL}/api/employee_daily_work", payload)
@@ -459,6 +478,31 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
     except KeyboardInterrupt:
         print("\n🔒 Input Detection Tracker stopped.")
 
+@app.route("/checkout", methods=["GET"])
+def checkout():
+    print("⛔ Checkout requested")
+    global app_usage, site_usage
+
+    try:
+
+        send_daily_report(app_usage, site_usage)
+        print("📤 Daily report sent during checkout.")
+        payload = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "app_usage": [{"name": k, "time_spent": format_duration(v)} for k, v in app_usage.items()],
+            "site_usage": [{"name": k, "time_spent": format_duration(v)} for k, v in site_usage.items()],
+            "script_used": script_flag['used']
+        }
+        return jsonify({"status": "checkout in progress"})
+
+    except Exception as e:
+        print(f"❌ Failed to send daily report: {e}")
+        return jsonify({"status": "Error sending daily report when checkout", "error": str(e)})
+
+def start_flask():
+    app.run(port=5001, debug=True, use_reloader=False)
+
 if __name__=="__main__":
     threading.Thread(target=detect_non_scripted_inputs,daemon=True).start()
+    flask_thread = threading.Thread(target=start_flask, daemon=True).start()
     track_forever()

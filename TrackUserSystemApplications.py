@@ -88,6 +88,7 @@ def log_user_activity():
                 ]
             }
             print(log_data)
+            send_log_to_odoo(f"{ODOO_URL}/api/user-activity", log_data)
             mouse_activity = {"clicks": 0, "scrolls": 0, "movements": 0}
             keyboard_activity = {"key_presses": 0, "keys": []}
         except Exception as e:
@@ -153,6 +154,7 @@ def log_system_usage():
                 "network_sent": f"{net.bytes_sent / 1024 ** 2:.2f} MB",
                 "network_received": f"{net.bytes_recv / 1024 ** 2:.2f} MB"
             }
+            send_log_to_odoo(f"{ODOO_URL}/api/system-usage", log_data)
         except Exception as e:
             print(f"[ERROR] log_system_usage: {e}")
         time.sleep(60)
