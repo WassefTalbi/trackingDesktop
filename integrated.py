@@ -1,5 +1,5 @@
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify,request
 import os
 import time
 import subprocess
@@ -44,7 +44,8 @@ CHROMIUM_PATHS = {
 HISTORY_UPDATE_INTERVAL = 10  # seconds
 history_cache = {}
 last_history_update = datetime.min
-
+STATIC_IP = "192.168.38.10"
+PORT = 5001
 
 # === ODOO SETUP ===
 if os.geteuid() == 0 and os.environ.get("SUDO_USER"):
@@ -52,9 +53,18 @@ if os.geteuid() == 0 and os.environ.get("SUDO_USER"):
 else:
     user_home = os.path.expanduser("~")
 
+SCRIPT_PATH = os.path.expanduser("~/PycharmProjects/ScriptDev/integrated.py")
+VENV_PYTHON = os.path.expanduser("~/PycharmProjects/ScriptDev/.venv/bin/python")
 TOKEN_FILE = os.path.join(user_home, "PycharmProjects/ScriptDev/checkin_token.txt")
 ODOO_URL = "http://localhost:8069"
 
+def save_token(token):
+    try:
+        with open(TOKEN_FILE, "w") as f:
+            f.write(token)
+        print(f"✅ Token saved to {TOKEN_FILE}")
+    except IOError as e:
+        print(f"❌ Failed to save token: {e}")
 def reload_token():
     global AUTH_TOKEN
     try:
@@ -81,7 +91,27 @@ def get_headers():
 script_flag = {'used': False}
 alert_sent = False
 
-# === UTILITIES ===
+def run_script():
+    try:
+        if not os.path.exists(SCRIPT_PATH):
+            raise Exception(f"Script not found at {SCRIPT_PATH}")
+        if not os.path.exists(VENV_PYTHON):
+            raise Exception(f"Python binary not found at {VENV_PYTHON}")
+
+        # Run the script using subprocess
+        process = subprocess.Popen(
+            [VENV_PYTHON, SCRIPT_PATH],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        print("✅ Script started with PID:", process.pid)
+        return process.pid
+    except Exception as e:
+        print(f"❌ Error starting script: {e}")
+        return None
+
 def pause_tracking():
     global is_paused
     is_paused = True
@@ -91,6 +121,7 @@ def resume_tracking():
     global is_paused
     is_paused = False
     print("▶️ Tracking resumed.")
+
 def is_gui_process(proc):
     try:
         with open(f"/proc/{proc.pid}/environ", "rb") as f:
@@ -98,7 +129,6 @@ def is_gui_process(proc):
             return any(var.startswith(b'DISPLAY=') or var.startswith(b'WAYLAND_DISPLAY=') for var in env)
     except Exception:
         return False
-
 
 def get_focused_window_pid():
     try:
@@ -500,11 +530,29 @@ def detect_non_scripted_inputs(poll_interval=0.05, event_window=0.15):
 
     except KeyboardInterrupt:
         print("\n🔒 Input Detection Tracker stopped.")
+
+
+@app.route('/checkin', methods=['POST'])
+def checkin():
+    try:
+        data = request.get_json()
+        token = data.get('token')
+        if not token:
+            return jsonify({"error": "Employee ID and Token are required"}), 400
+        save_token(token)
+        pid = run_script()
+        if pid:
+            return jsonify({"status": "Check-in successful", "token": token, "script_pid": pid}), 200
+        else:
+            return jsonify({"error": "Failed to start the script"}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/pause", methods=["GET"])
 def pause():
     pause_tracking()
     return jsonify({"status": "Tracking paused"}), 200
-
 @app.route("/resume", methods=["GET"])
 def resume():
     resume_tracking()
@@ -534,7 +582,7 @@ def checkout():
         return jsonify({"status": "Error sending daily report when checkout", "error": str(e)})
 
 def start_flask():
-    app.run(port=5001, debug=True, use_reloader=False)
+    app.run(host=STATIC_IP, port=PORT, debug=True, use_reloader=False)
 
 if __name__=="__main__":
     threading.Thread(target=detect_non_scripted_inputs,daemon=True).start()
